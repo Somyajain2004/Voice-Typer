@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Live Voice Typer</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    textarea { width: 100%; height: 200px; padding: 10px; font-size: 16px; }
+    button { padding: 10px 20px; margin-top: 10px; font-size: 16px; }
+  </style>
+</head>
+<body>
+  <h2>Speak and See It Typed</h2>
+  <textarea id="output" placeholder="Speak now..." readonly></textarea><br>
+  <button id="toggle">Start Listening</button>
+
+  <script>
+    const button = document.getElementById("toggle");
+    const output = document.getElementById("output");
+
+    let isListening = false;
+    let ws;
+    let mediaRecorder;
+
+    button.onclick = async () => {
+      if (!isListening) {
+        ws = new WebSocket("ws://localhost:3000");
+
+        ws.onopen = () => console.log("WebSocket connected");
+        ws.onerror = (err) => console.error("WebSocket error", err);
+        ws.onclose = () => console.log("WebSocket closed");
+
+        ws.onmessage = async (msg) => {
+          try {
+            const text = typeof msg.data === "string" ? msg.data : await msg.data.text();
+            const data = JSON.parse(text);
+            const transcript = data.channel?.alternatives?.[0]?.transcript;
+            if (transcript && transcript !== "") {
+              output.value += transcript + " ";
+            }
+          } catch (err) {
+            console.error("Error parsing message:", err);
+          }
+        };
+
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0 && ws.readyState === 1) {
+            ws.send(event.data);
+          }
+        };
+
+        mediaRecorder.start(250); 
+        button.textContent = "Stop Listening";
+        isListening = true;
+      } else {
+        mediaRecorder.stop();
+        ws.close();
+        button.textContent = "Start Listening";
+        isListening = false;
+      }
+    };
+  </script>
+</body>
+</html>
